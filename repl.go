@@ -5,13 +5,16 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
+	"strings"
 
 	"golang.org/x/crypto/ssh/terminal"
 )
 
 var (
-	Stdout io.Writer
 	Stdin  io.Reader
+	Stdout io.Writer
+	Stderr io.Writer
 )
 
 var config = struct {
@@ -64,6 +67,15 @@ func Do(eval func(string) bool) error {
 			return err
 		}
 	}
+}
+
+func DoShell(cmd string) error {
+	args := strings.Split(cmd, " ")
+	c := exec.Command(args[0], args[1:]...)
+	c.Stdout = os.Stdout
+	c.Stderr = os.Stderr
+	c.Stdin = os.Stdin
+	return c.Run()
 }
 
 func newTerm() {
