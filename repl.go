@@ -17,34 +17,42 @@ var (
 	Stderr io.Writer
 )
 
-var config = struct {
-	Cursor string
-}{
-	Cursor: "->",
+type Repl struct {
+	state    *terminal.State
+	terminal *terminal.Terminal
+	fd       int
+	tty      *os.File
 }
 
-func SetCursor(c string) {
-	config.Cursor = c
+func New() (r *Repl, err error) {
+	tty := os.Stdin
+	r = &Repl{
+		fd:  int(tty.Fd()),
+		tty: tty,
+	}
+	r.MakeRaw()
+	r.SetCursor("->")
+
+	return
 }
 
-func Do(eval func(string) bool) error {
-	tty, err := os.Open("/dev/tty")
-	if err != nil {
-		err = fmt.Errorf("can't open /dev/tty: %w", err)
-		return err
-	}
-	fd := int(tty.Fd())
-	termState, err := terminal.MakeRaw(fd)
-	if err != nil {
-		return err
-	}
-	defer terminal.Restore(fd, termState)
+func (r *Repl) SetCursor(c string) {
+	r.terminal = terminal.NewTerminal(r.tty, fmt.Sprintf("%s ", c))
+}
 
-	n := terminal.NewTerminal(os.Stdin, fmt.Sprintf("%s ", config.Cursor))
-	n.SetSize(int(^uint(0)>>1), 0)
-	Stdout = os.Stdout
+func (r *Repl) MakeRaw() (err error) {
+	r.state, err = terminal.MakeRaw(r.fd)
+	return
+}
+
+func (r *Repl) Restore() error {
+	return terminal.Restore(r.fd, r.state)
+}
+
+func (r *Repl) Do(eval func(string) bool) error {
+	defer r.Restore()
 	for {
-		ln, err := n.ReadLine()
+		ln, err := r.terminal.ReadLine()
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
 				return nil
@@ -52,7 +60,7 @@ func Do(eval func(string) bool) error {
 			return err
 		}
 
-		terminal.Restore(fd, termState)
+		err = r.Restore()
 		if err != nil {
 			return err
 		}
@@ -62,10 +70,11 @@ func Do(eval func(string) bool) error {
 			return nil
 		}
 
-		termState, err = terminal.MakeRaw(fd)
+		err = r.MakeRaw()
 		if err != nil {
 			return err
 		}
+
 	}
 }
 
@@ -76,8 +85,4 @@ func DoShell(cmd string) error {
 	c.Stderr = os.Stderr
 	c.Stdin = os.Stdin
 	return c.Run()
-}
-
-func newTerm() {
-
 }
